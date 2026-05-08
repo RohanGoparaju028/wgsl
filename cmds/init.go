@@ -8,6 +8,7 @@ import (
 	"net/smtp"
 	"strconv"
 	"math/rand"
+	"time"
 )
 var doctor_email string
 func is_validEmail(email string) bool {
@@ -50,6 +51,7 @@ func Init(){
 	if err != nil {
 		panic("An internal error has occurred please try again")
 	}
+	rand.Seed(time.Now().UnixNano())
 	verification_code := 100000 +rand.Intn(900000)
 	err = send_AuthenticationCode(doctor_email,verification_code)
 	if err != nil {
