@@ -1,38 +1,45 @@
 package cmds
 
 import (
+	"crypto/rand"
 	"fmt"
-	"strings"
-	"github.com/joho/godotenv"
-	"os"
+	"math/big"
 	"net/smtp"
+	"os"
 	"strconv"
-	"math/rand"
+	"strings"
 	"time"
+	"github.com/joho/godotenv"
+	"golang.org/x/term"
 )
-var doctor_email string
-func is_validEmail(email string) bool {
+var DoctorEmail string
+
+func isValidEmail(email string) bool {
 	if email == "" {
 		return false
 	}
-	supported_email := []string{"@gmail.com","@outlook.com","@icloud.com","@yahoo.com"} // supported email services
-	flag := false
-	for _,val := range supported_email {
-		if strings.Contains(email,val) && strings.HasSuffix(email,val) {
-			flag = true
-			break
+	supportedDomains := []string{
+		"@gmail.com",
+		"@outlook.com",
+		"@icloud.com",
+		"@yahoo.com",
+	}
+	for _, domain := range supportedDomains {
+		if strings.HasSuffix(email, domain) {
+			return true
 		}
 	}
-	return flag
+	return false
 }
-func send_AuthenticationCode(email string,body int) error {
+
+func sendAuthenticationCode(email string, code int) error {
 	auth := smtp.PlainAuth(
 		"",
 		os.Getenv("FROM_EMAIL"),
 		os.Getenv("FROM_EMAIL_PASSWORD"),
 		os.Getenv("FROM_EMAIL_SMTP"),
 	)
-	message := "Subject:Verification Code\n"+strconv.Itoa(body)
+	message := "Subject: Verification Code\r\n\r\n" + strconv.Itoa(code)
 	return smtp.SendMail(
 		os.Getenv("SMTP_ADDR"),
 		auth,
@@ -41,29 +48,87 @@ func send_AuthenticationCode(email string,body int) error {
 		[]byte(message),
 	)
 }
-func Init(){
-	fmt.Print("Enter Doctor Email: ")
-	fmt.Scanf("%s",&doctor_email)
-	if !is_validEmail(doctor_email) {
-		panic("Enter a valid email")
+
+func hideEmail() (string, error) {
+	rawInput, err := term.ReadPassword(int(os.Stdin.Fd()))
+	if err != nil {
+		return "", err
 	}
+	fmt.Println()
+	return strings.TrimSpace(string(rawInput)), nil
+}
+
+func hideOTP() (int, error) {
+	rawInput, err := term.ReadPassword(int(os.Stdin.Fd()))
+	if err != nil {
+		return 0, err
+	}
+	fmt.Println()
+	otp, err := strconv.Atoi(strings.TrimSpace(string(rawInput)))
+	return otp, err
+}
+func generateSecureOTP() (int, error) {
+	max := big.NewInt(900000)
+	n, err := rand.Int(rand.Reader, max)
+	if err != nil {
+		return 0, err
+	}
+	return int(n.Int64()) + 100000, nil
+}
+
+func Init() {
 	err := godotenv.Load(".env")
 	if err != nil {
-		panic("An internal error has occurred please try again")
+		fmt.Println("Error: Missing .env file. Please configure the environment.")
+		os.Exit(1)
 	}
-	rand.Seed(time.Now().UnixNano())
-	verification_code := 100000 +rand.Intn(900000)
-	err = send_AuthenticationCode(doctor_email,verification_code)
+
+	fmt.Print("Enter Doctor Email: ")
+	DoctorEmail, err = hideEmail()
 	if err != nil {
-		panic("Error while sending an verification code to the given email ")
+		fmt.Println("Error reading email:", err)
+		return
 	}
+
+	if len(DoctorEmail) > 254 {
+		fmt.Println("Error: Email address is too long.")
+		return
+	}
+
+	if !isValidEmail(DoctorEmail) {
+		fmt.Println("Error: Please enter a valid email (gmail, outlook, icloud, or yahoo).")
+		return
+	}
+
+	verificationCode, err := generateSecureOTP()
+	if err != nil {
+		fmt.Println("Error generating verification code. Please try again.")
+		return
+	}
+	err = sendAuthenticationCode(DoctorEmail, verificationCode)
+	if err != nil {
+		fmt.Println("Error: Could not send verification code to the provided email.")
+		return
+	}
+	sentAt := time.Now()
+
 	fmt.Print("Enter verification code: ")
-	var code int
-	fmt.Scanf("%d",&code)
-	if code == verification_code {
-		fmt.Println("Initialised Successfully")
-		os.WriteFile(".wgsl",[]byte("1"),0644)
-	} else{
-		fmt.Println("Verification was unsuccessfull, unable to initialse init in the current folder please try again")
+	code, err := hideOTP()
+	if err != nil {
+		fmt.Println("Error reading verification code:", err)
+		return
+	}
+
+	if time.Since(sentAt) > 5*time.Minute {
+		fmt.Println("Error: Verification code has expired. Please run init again.")
+		return
+	}
+
+	if code == verificationCode {
+		fmt.Println("Initialised successfully.")
+		drEmail := fmt.Sprintf("1\n%s",DoctorEmail)
+		os.WriteFile(".wgsl", []byte(drEmail), 0600)
+	} else {
+		fmt.Println("Incorrect verification code. Please run init again.")
 	}
 }

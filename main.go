@@ -3,6 +3,8 @@ package main
 import (
    "fmt"
 	"os"
+	"os/exec"
+	"log"
 	cmd"wgsl/cmds"
 )
 var available_commands = []string{"init","help","get","train","test","result"}
@@ -23,6 +25,7 @@ func wgslSucess() bool {
 	return true
 }
 func main() {
+	os.Mkdir("Images",0755)
 	fmt.Println("Thank you for using the wgsl command line tool the one stop for an prediction of leukemia detection")
 	fmt.Println("Disclaimer:\n1)This cli tool is intended for medical professinals to aid them to make a concrete decision\n2)The results")
 	fmt.Println("use wgsl help command to see all the supported commands")
@@ -42,11 +45,21 @@ func main() {
 		cmd.Init()
 	case "help":
 		 cmd.Help()
-	case "get":
-		if len(os.Args) < 3 {
-		 panic("Not enough command to perform the operations. Please follow the structure wgsl <commandname>\n<commandname> is replaced by the commands\n1)init\n2)help\n3)get\n4)train\n5)test\n6)result")
+	case "train":
+		if !wgslSucess() {
+			fmt.Println("first use init to start")
+			return
 		}
-		imagePath := os.Args[2]
-		cmd.Get(imagePath)
+		fmt.Println("training and testing the model")
+		cmd := exec.Command("python3","main.py")
+		_,err := cmd.CombinedOutput()
+		if err != nil {
+			log.Fatalf("Error:%v while executing main.py",err)
+		}
+	case "result":
+		fmt.Println("providing the result to your subscribed email")
+		cmd.Result()
+		  os.Remove(".wgsl")
+
 	}
 }
